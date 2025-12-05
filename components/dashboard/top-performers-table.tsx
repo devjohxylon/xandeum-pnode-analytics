@@ -1,19 +1,22 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNodes } from "@/hooks/use-nodes";
 import { PNode } from "@/types";
-import { formatTB, formatPercentage, formatMbps, formatNumber } from "@/lib/utils";
+import { formatTB, formatPercentage, formatNumber } from "@/lib/utils";
+import { validateSearchQuery, sanitizeInput, validateNodeId } from "@/lib/validation";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type SortField = "health" | "uptime_percentage" | "total_rewards_earned" | "latency_ms" | "stake_amount";
 type SortDirection = "asc" | "desc";
 
 export function TopPerformersTable() {
   const { data: nodes, isLoading } = useNodes();
+  const router = useRouter();
   const [sortField, setSortField] = useState<SortField>("health");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [searchQuery, setSearchQuery] = useState("");
@@ -24,9 +27,8 @@ export function TopPerformersTable() {
 
     let filtered = nodes;
 
-    // Apply search filter
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    if (searchQuery && validateSearchQuery(searchQuery)) {
+      const query = sanitizeInput(searchQuery).toLowerCase();
       filtered = nodes.filter(
         (node) =>
           node.node_id.toLowerCase().includes(query) ||
@@ -35,12 +37,9 @@ export function TopPerformersTable() {
       );
     }
 
-    // Apply status filter
     if (statusFilter !== "all") {
       filtered = filtered.filter((node) => node.status === statusFilter);
     }
-
-    // Apply sorting
     const sorted = [...filtered].sort((a, b) => {
       let aValue: number;
       let bValue: number;
@@ -77,16 +76,34 @@ export function TopPerformersTable() {
     });
 
     return sorted.slice(0, 10); // Top 10
-  }, [nodes, sortField, sortDirection, searchQuery]);
+  }, [nodes, sortField, sortDirection, searchQuery, statusFilter]);
 
-  const handleSort = (field: SortField) => {
+  const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
       setSortDirection("desc");
     }
-  };
+  }, [sortField, sortDirection]);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value.length <= 100) {
+      setSearchQuery(value);
+    }
+  }, []);
+
+  const handleStatusFilterChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as "all" | "online" | "degraded" | "offline";
+    setStatusFilter(value);
+  }, []);
+
+  const handleNodeClick = useCallback((nodeId: string) => {
+    if (validateNodeId(nodeId)) {
+      router.push(`/nodes/${encodeURIComponent(nodeId)}`);
+    }
+  }, [router]);
 
   const SortButton = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <button
@@ -109,16 +126,16 @@ export function TopPerformersTable() {
   const getStatusColor = (status?: string) => {
     switch (status) {
       case "online":
-        return "bg-green-500/20 text-green-500";
+        return "bg-green-500/20 text-green-500 border-green-500/30";
       case "degraded":
-        return "bg-yellow-500/20 text-yellow-500";
+        return "bg-yellow-500/20 text-yellow-500 border-yellow-500/30";
       case "offline":
-        return "bg-red-500/20 text-red-500";
+        return "bg-red-500/20 text-red-500 border-red-500/30";
       default:
-        return "bg-gray-500/20 text-gray-500";
+        return "bg-gray-500/20 text-gray-500 border-gray-500/30";
     }
   };
-
+  
   if (isLoading) {
     return (
       <Card>
@@ -137,14 +154,17 @@ export function TopPerformersTable() {
   }
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="border-0 bg-card/50 backdrop-blur-sm shadow-xl">
+      <CardHeader className="border-b border-white/10">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <CardTitle>Top Performers</CardTitle>
+          <CardTitle className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent">
+            Top Performers
+          </CardTitle>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as any)}
+              onChange={handleStatusFilterChange}
+              aria-label="Filter nodes by status"
               className="px-3 py-1.5 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="all">All Status</option>
@@ -156,7 +176,9 @@ export function TopPerformersTable() {
               type="text"
               placeholder="Search nodes..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={handleSearchChange}
+              aria-label="Search nodes by ID, city, or country"
+              maxLength={100}
               className="px-3 py-1.5 text-sm rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary flex-1 sm:flex-initial sm:w-48"
             />
           </div>
@@ -207,7 +229,17 @@ export function TopPerformersTable() {
                 sortedNodes.map((node) => (
                   <tr
                     key={node.node_id}
-                    className="border-b border-border hover:bg-accent/50 transition-colors"
+                    className="border-b border-border hover:bg-accent/50 transition-smooth cursor-pointer hover-glow"
+                    onClick={() => handleNodeClick(node.node_id)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleNodeClick(node.node_id);
+                      }
+                    }}
+                    aria-label={`View details for node ${node.node_id}`}
                   >
                     <td className="py-3 px-4">
                       <Link
@@ -219,10 +251,22 @@ export function TopPerformersTable() {
                     </td>
                     <td className="py-3 px-4">
                       <span
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(
+                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(
                           node.status
-                        )}`}
+                        )} transition-smooth`}
                       >
+                        {(node.status === "online" || node.status === "degraded") && (
+                          <span className="relative flex h-2 w-2 mr-1.5">
+                            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${node.status === "online" ? "bg-green-400" : "bg-yellow-400"}`}></span>
+                            <span className={`relative inline-flex rounded-full h-2 w-2 ${node.status === "online" ? "bg-green-500" : "bg-yellow-500"}`}></span>
+                          </span>
+                        )}
+                        {node.status === "offline" && (
+                          <span className="h-2 w-2 mr-1.5 rounded-full bg-red-500"></span>
+                        )}
+                        {!node.status && (
+                          <span className="h-2 w-2 mr-1.5 rounded-full bg-gray-500"></span>
+                        )}
                         {node.status || "unknown"}
                       </span>
                     </td>

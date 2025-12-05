@@ -45,7 +45,14 @@ export function MetricsChart({ title, metric, hours = 24 }: MetricsChartProps) {
     );
   }
 
-  let data: any[] = [];
+  interface ChartDataPoint {
+    timestamp: number;
+    value?: number;
+    used?: number;
+    total?: number;
+  }
+
+  let data: ChartDataPoint[] = [];
   let lines: JSX.Element[] = [];
   let yAxisFormatter: (value: number) => string = (v) => v.toString();
 

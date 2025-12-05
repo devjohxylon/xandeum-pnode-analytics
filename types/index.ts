@@ -27,13 +27,13 @@ export interface NetworkMetrics {
   totalNodes: number;
   onlineNodes: number;
   offlineNodes: number;
-  totalStorage: number; // bytes
-  usedStorage: number; // bytes
-  totalStaked: number; // tokens
-  averageUptime: number; // percentage
-  averageResponseTime: number; // milliseconds
-  networkHealth: number; // 0-100
-  dataRedundancy: number; // average redundancy factor
+  totalStorage: number;
+  usedStorage: number;
+  totalStaked: number;
+  averageUptime: number;
+  averageResponseTime: number;
+  networkHealth: number;
+  dataRedundancy: number;
 }
 
 export interface HistoricalData {
